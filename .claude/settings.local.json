@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"D:\\\\PRIVATE\\\\Reddit-Clone\\\\Server\" -Recurse -File)",
+      "Bash(Select-Object FullName)",
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(node -e \"require\\('./index.js'\\); setTimeout\\(\\(\\) => process.exit\\(0\\), 2000\\);\")",
+      "Bash(node _chat-test.js)",
+      "Bash(node index.js)"
+    ]
+  }
+}
