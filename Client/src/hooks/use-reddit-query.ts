@@ -159,3 +159,34 @@ export const useUnsavePostMutation = () => {
     },
   })
 }
+
+export const useSendInviteMutation = (communityName: string) => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (username: string) => redditService.sendInvite(communityName, username),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['community-invites', communityName] })
+    },
+  })
+}
+
+export const useRespondToInviteMutation = () => {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: ({ communityName, action }: { communityName: string; action: 'accept' | 'reject' }) =>
+      redditService.respondToInvite(communityName, action),
+    onSuccess: (_data, { communityName }) => {
+      queryClient.invalidateQueries({ queryKey: ['notifications'] })
+      queryClient.invalidateQueries({ queryKey: ['notifications-unread'] })
+      queryClient.invalidateQueries({ queryKey: ['subreddit', communityName] })
+      queryClient.invalidateQueries({ queryKey: ['subreddits'] })
+    },
+  })
+}
+
+export const useCommunityInvitesQuery = (communityName: string, enabled = true) =>
+  useQuery({
+    queryKey: ['community-invites', communityName],
+    queryFn: () => redditService.listInvites(communityName),
+    enabled,
+  })

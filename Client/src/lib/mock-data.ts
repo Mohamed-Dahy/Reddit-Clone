@@ -32,7 +32,9 @@ export interface SubredditInfo {
   online: number;
   icon: string;
   createdAt: string;
+  type?: string;
   isMember?: boolean;
+  isModerator?: boolean;
 }
 
 export interface Notification {
@@ -42,7 +44,7 @@ export interface Notification {
     _id: string;
     username: string;
   };
-  type: 'post_comment' | 'comment_reply' | 'mention';
+  type: 'post_comment' | 'comment_reply' | 'mention' | 'community_invite';
   post?: {
     _id: string;
     title: string;
@@ -50,6 +52,10 @@ export interface Notification {
   comment?: {
     _id: string;
     body: string;
+  };
+  community?: {
+    _id: string;
+    name: string;
   };
   isRead: boolean;
   createdAt: string;

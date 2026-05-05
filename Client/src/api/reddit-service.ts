@@ -85,7 +85,7 @@ export const redditService = {
     }))
   },
   getSubreddit: async (name: string) => {
-    const data = await apiRequest<{ success: boolean; community: any; isMember: boolean }>(`/reddit/communities/${name}`)
+    const data = await apiRequest<{ success: boolean; community: any; isMember: boolean; isModerator: boolean }>(`/reddit/communities/${name}`)
     const s = data.community
     return {
       name: s.name,
@@ -94,7 +94,9 @@ export const redditService = {
       online: 0,
       icon: s.icon || 'Hash',
       createdAt: s.createdAt ? new Date(s.createdAt).toLocaleDateString() : 'unknown',
+      type: s.type,
       isMember: data.isMember,
+      isModerator: data.isModerator,
     } as SubredditInfo
   },
   joinCommunity: async (name: string) => {
@@ -206,6 +208,23 @@ export const redditService = {
   },
   deleteNotification: async (id: string) => {
     await apiRequest(`/reddit/notifications/${id}`, { method: 'DELETE' })
+  },
+  sendInvite: async (communityName: string, username: string) => {
+    return apiRequest(`/reddit/communities/${communityName}/invites`, {
+      method: 'POST',
+      body: JSON.stringify({ username }),
+    })
+  },
+  respondToInvite: async (communityName: string, action: 'accept' | 'reject') => {
+    return apiRequest(`/reddit/communities/${communityName}/invites/respond`, {
+      method: 'POST',
+      body: JSON.stringify({ action }),
+    })
+  },
+  listInvites: async (communityName: string) => {
+    return apiRequest<{ success: boolean; invites: { _id: string; invitedUser: { _id: string; username: string }; invitedBy: { _id: string; username: string }; createdAt: string }[] }>(
+      `/reddit/communities/${communityName}/invites`
+    )
   },
   summarizeComments: async (comments: Post['comments'], postId?: string) => {
     if (!postId) return 'Cannot summarize without a post ID.'
