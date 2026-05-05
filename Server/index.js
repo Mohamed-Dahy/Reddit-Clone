@@ -26,7 +26,11 @@ const app = express();
 
 // ─── Security Middleware ──────────────────────────────────────────────────────
 app.use(helmet());
-app.use(cors());
+   app.use(cors({
+       origin: process.env.CLIENT_URL,
+       credentials: true,
+       methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+     }))
 app.use(express.json());
 
 // Rate limit auth routes — 20 requests per 15 minutes

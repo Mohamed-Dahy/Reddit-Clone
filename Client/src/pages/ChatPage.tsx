@@ -26,10 +26,12 @@ function partnerOf(conv: ChatConversation, meId: string) {
 }
 
 function senderId(msg: ChatMessage): string {
+  if (!msg.sender) return ''
   return typeof msg.sender === 'string' ? msg.sender : msg.sender._id
 }
 
 function senderName(msg: ChatMessage): string {
+  if (!msg.sender) return ''
   return typeof msg.sender === 'string' ? '' : msg.sender.username
 }
 
@@ -485,7 +487,12 @@ export function ChatPage() {
   )
 
   const handleStarted = (conv: ChatConversation) => {
-    // Refresh the list so the new conversation appears, and route to it.
+    // Inject the new conversation into the cache immediately so `active` resolves
+    // on the very first render after navigate — before the background refetch lands.
+    queryClient.setQueryData<ChatConversation[]>(['chat-conversations'], (old = []) => {
+      if (old.some((c) => c._id === conv._id)) return old
+      return [conv, ...old]
+    })
     queryClient.invalidateQueries({ queryKey: ['chat-conversations'] })
     navigate(`/chat/${conv._id}`)
   }

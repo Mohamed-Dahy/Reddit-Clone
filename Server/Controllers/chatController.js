@@ -21,16 +21,31 @@ const startConversation = async (req, res) => {
     if (!target)
       return res.status(404).json({ success: false, message: 'User not found' });
 
-    // Sorted pair ensures the unique index is order-independent
+    // Sorted pair is order-independent — same two users always produce the same key/array.
     const sorted = [req.user.id, userId].map(String).sort();
+    const pairKey = sorted.join('_');
 
-    let conversation = await Conversation.findOne({ participants: { $all: sorted, $size: 2 } })
+    // Find by pairKey first (fast), fall back to participants query for old docs.
+    let conversation = await Conversation.findOne({
+      $or: [{ pairKey }, { participants: { $all: sorted, $size: 2 } }],
+    })
       .populate('participants', 'username')
       .populate({ path: 'lastMessage', select: 'body sender createdAt isDeleted' });
 
     if (!conversation) {
-      conversation = await Conversation.create({ participants: sorted });
-      conversation = await conversation.populate('participants', 'username');
+      try {
+        conversation = await Conversation.create({ participants: sorted, pairKey });
+        conversation = await conversation.populate('participants', 'username');
+      } catch (createErr) {
+        if (createErr.code === 11000) {
+          // Race condition: another request created it concurrently — just fetch it.
+          conversation = await Conversation.findOne({ pairKey })
+            .populate('participants', 'username')
+            .populate({ path: 'lastMessage', select: 'body sender createdAt isDeleted' });
+        } else {
+          throw createErr;
+        }
+      }
     }
 
     res.status(200).json({ success: true, data: { conversation } });
