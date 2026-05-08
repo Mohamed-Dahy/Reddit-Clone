@@ -2,8 +2,6 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { validationResult } = require('express-validator');
 const User = require('../Models/authModel');
-const { sendPasswordResetEmail } = require('../Config/email');
-
 // ─── Token Helpers ────────────────────────────────────────────────────────────
 
 const generateAccessToken = (userId, role) =>
@@ -17,7 +15,6 @@ const generateRefreshToken = (userId) =>
   });
 
 // ─── @route  POST /api/auth/register ─────────────────────────────────────────
-// ─── @access Public ──────────────────────────────────────────────────────────
 const register = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -62,7 +59,6 @@ const register = async (req, res) => {
 };
 
 // ─── @route  POST /api/auth/login ─────────────────────────────────────────────
-// ─── @access Public ──────────────────────────────────────────────────────────
 const login = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -117,7 +113,6 @@ const login = async (req, res) => {
 };
 
 // ─── @route  POST /api/auth/refresh ──────────────────────────────────────────
-// ─── @access Public (requires valid refresh token) ───────────────────────────
 const refresh = async (req, res) => {
   const { refreshToken } = req.body;
 
@@ -151,7 +146,6 @@ const refresh = async (req, res) => {
 };
 
 // ─── @route  POST /api/auth/logout ───────────────────────────────────────────
-// ─── @access Private ─────────────────────────────────────────────────────────
 const logout = async (req, res) => {
   try {
     await User.findByIdAndUpdate(req.user.id, { refreshToken: null });
@@ -162,7 +156,6 @@ const logout = async (req, res) => {
 };
 
 // ─── @route  GET /api/auth/me ─────────────────────────────────────────────────
-// ─── @access Private ─────────────────────────────────────────────────────────
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);

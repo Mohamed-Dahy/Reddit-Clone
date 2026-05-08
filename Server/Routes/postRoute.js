@@ -55,7 +55,7 @@ const createPostValidation = [
 
   // body is only required for text posts
   body('body')
-    .if(body('type').equals('text'))
+    .if((value, { req }) => req.body.type === 'text')
     .trim()
     .notEmpty().withMessage('Text posts must include a body')
     .isLength({ max: Post.MAX_BODY_LENGTH })
@@ -63,7 +63,7 @@ const createPostValidation = [
 
   // url is only required (and only validated) for link posts
   body('url')
-    .if(body('type').equals('link'))
+    .if((value, { req }) => req.body.type === 'link')
     .trim()
     .notEmpty().withMessage('Link posts must include a URL')
     .isURL({ protocols: ['http', 'https'], require_protocol: true })
@@ -71,7 +71,7 @@ const createPostValidation = [
 
   // imageUrl is only required (and only validated) for image posts
   body('imageUrl')
-    .if(body('type').equals('image'))
+    .if((value, { req }) => req.body.type === 'image')
     .trim()
     .notEmpty().withMessage('Image posts must include an image URL')
     .isURL({ protocols: ['http', 'https'], require_protocol: true })

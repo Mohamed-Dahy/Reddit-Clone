@@ -14,9 +14,6 @@ const connectDB = async () => {
 
     await mongoose.connect(uri, { dbName: 'Reddit_Clone_Database' });
     console.log('MongoDB connected');
-
-    // Drop the old broken unique index on participants (it blocks users from having
-    // more than one conversation). The new pairKey index handles uniqueness correctly.
     try {
       const Conversation = mongoose.model('Conversation');
       await Conversation.collection.dropIndex('participants_1');
@@ -25,8 +22,7 @@ const connectDB = async () => {
       // Index doesn't exist — nothing to do.
     }
 
-    // Sync schema indexes: creates any missing indexes, drops none that aren't
-    // already removed above.
+
     const Conversation = mongoose.model('Conversation');
     await Conversation.syncIndexes();
   } catch (error) {

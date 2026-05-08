@@ -37,7 +37,6 @@ module.exports = router;
 
 // ─── Public user routes (no auth required) ───────────────────────────────────
 const publicRouter = express.Router();
-// Order matters: more specific paths before /:username
 publicRouter.get('/:username/posts', optionalProtect, getUserPosts);
 publicRouter.get('/:username/followers', optionalProtect, getUserFollowers);
 publicRouter.get('/:username/following', optionalProtect, getUserFollowing);

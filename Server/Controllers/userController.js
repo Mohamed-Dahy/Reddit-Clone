@@ -207,7 +207,6 @@ const unfollowUser = async (req, res) => {
 };
 
 // ─── @route  GET /reddit/users/:username/followers ───────────────────────────
-// ─── @access Public ─────────────────────────────────────────────────────────
 const getUserFollowers = async (req, res) => {
   const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
@@ -243,7 +242,6 @@ const getUserFollowers = async (req, res) => {
 };
 
 // ─── @route  GET /reddit/users/:username/following ───────────────────────────
-// ─── @access Public ─────────────────────────────────────────────────────────
 const getUserFollowing = async (req, res) => {
   const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
   const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
