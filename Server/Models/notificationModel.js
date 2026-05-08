@@ -1,6 +1,6 @@
 const mongoose = require('mongoose');
 
-const NOTIFICATION_TYPES = ['post_comment', 'comment_reply', 'mention'];
+const NOTIFICATION_TYPES = ['post_comment', 'comment_reply', 'mention', 'community_invite'];
 
 const notificationSchema = new mongoose.Schema(
   {

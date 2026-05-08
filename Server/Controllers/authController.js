@@ -2,8 +2,6 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { validationResult } = require('express-validator');
 const User = require('../Models/authModel');
-const { sendPasswordResetEmail } = require('../Config/email');
-
 // ─── Token Helpers ────────────────────────────────────────────────────────────
 
 const generateAccessToken = (userId, role) =>
@@ -17,7 +15,6 @@ const generateRefreshToken = (userId) =>
   });
 
 // ─── @route  POST /api/auth/register ─────────────────────────────────────────
-// ─── @access Public ──────────────────────────────────────────────────────────
 const register = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -62,7 +59,6 @@ const register = async (req, res) => {
 };
 
 // ─── @route  POST /api/auth/login ─────────────────────────────────────────────
-// ─── @access Public ──────────────────────────────────────────────────────────
 const login = async (req, res) => {
   const errors = validationResult(req);
   if (!errors.isEmpty())
@@ -117,7 +113,6 @@ const login = async (req, res) => {
 };
 
 // ─── @route  POST /api/auth/refresh ──────────────────────────────────────────
-// ─── @access Public (requires valid refresh token) ───────────────────────────
 const refresh = async (req, res) => {
   const { refreshToken } = req.body;
 
@@ -151,7 +146,6 @@ const refresh = async (req, res) => {
 };
 
 // ─── @route  POST /api/auth/logout ───────────────────────────────────────────
-// ─── @access Private ─────────────────────────────────────────────────────────
 const logout = async (req, res) => {
   try {
     await User.findByIdAndUpdate(req.user.id, { refreshToken: null });
@@ -162,7 +156,6 @@ const logout = async (req, res) => {
 };
 
 // ─── @route  GET /api/auth/me ─────────────────────────────────────────────────
-// ─── @access Private ─────────────────────────────────────────────────────────
 const getMe = async (req, res) => {
   try {
     const user = await User.findById(req.user.id);
@@ -172,84 +165,4 @@ const getMe = async (req, res) => {
   }
 };
 
-// ─── @route  POST /api/auth/forgot-password ──────────────────────────────────
-// ─── @access Public ──────────────────────────────────────────────────────────
-const forgotPassword = async (req, res) => {
-  const { email } = req.body;
-
-  if (!email)
-    return res.status(400).json({ success: false, message: 'Email is required' });
-
-  // Same response whether email exists or not — prevents user enumeration
-  const genericResponse = {
-    success: true,
-    message: 'If an account with that email exists, a reset link has been sent',
-  };
-
-  try {
-    const user = await User.findOne({ email: email.toLowerCase().trim() });
-    if (!user) return res.status(200).json(genericResponse);
-
-    const resetToken = user.createPasswordResetToken();
-    await user.save({ validateBeforeSave: false });
-
-    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${resetToken}`;
-
-    try {
-      await sendPasswordResetEmail({ to: user.email, username: user.username, resetUrl });
-      res.status(200).json(genericResponse);
-    } catch {
-      // Email failed — clear the token so it can be retried
-      user.passwordResetToken = undefined;
-      user.passwordResetExpires = undefined;
-      await user.save({ validateBeforeSave: false });
-      res.status(500).json({ success: false, message: 'Failed to send email. Please try again.' });
-    }
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error', error: err.message });
-  }
-};
-
-// ─── @route  PATCH /api/auth/reset-password/:token ───────────────────────────
-// ─── @access Public ──────────────────────────────────────────────────────────
-const resetPassword = async (req, res) => {
-  const { token } = req.params;
-  const { newPassword } = req.body;
-
-  if (!newPassword || newPassword.length < 6)
-    return res.status(400).json({ success: false, message: 'Password must be at least 6 characters' });
-
-  try {
-    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
-
-    const user = await User.findOne({
-      passwordResetToken: hashedToken,
-      passwordResetExpires: { $gt: Date.now() },
-    }).select('+passwordResetToken +passwordResetExpires');
-
-    if (!user)
-      return res.status(400).json({ success: false, message: 'Reset link is invalid or has expired' });
-
-    user.password = newPassword;
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-
-    const accessToken = generateAccessToken(user._id, user.role);
-    const refreshToken = generateRefreshToken(user._id);
-    user.refreshToken = User.hashToken(refreshToken);
-
-    await user.save();
-
-    res.status(200).json({
-      success: true,
-      message: 'Password reset successfully',
-      accessToken,
-      refreshToken,
-      user,
-    });
-  } catch (err) {
-    res.status(500).json({ success: false, message: 'Server error', error: err.message });
-  }
-};
-
-module.exports = { register, login, refresh, logout, getMe, forgotPassword, resetPassword };
+module.exports = { register, login, refresh, logout, getMe};

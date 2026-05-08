@@ -1,6 +1,8 @@
 const express = require('express');
 const { body } = require('express-validator');
-const { updateProfile, changePassword } = require('../Controllers/userController');
+const { protect } = require('../Middlewares/authMiddleware');
+const { optionalProtect } = require('../Middlewares/optionalProtect');
+const { updateProfile, changePassword, getUserPosts, getUserProfile, followUser, unfollowUser, getUserFollowers, getUserFollowing } = require('../Controllers/userController');
 
 const router = express.Router();
 
@@ -25,7 +27,18 @@ const passwordValidation = [
     .withMessage('New password must be at least 6 characters'),
 ];
 
-router.patch('/me', profileValidation, updateProfile); //tested
-router.patch('/me/password', passwordValidation, changePassword); //tested
+// Protected routes (protect applied globally at app level)
+router.patch('/me', profileValidation, updateProfile);
+router.patch('/me/password', passwordValidation, changePassword);
+router.post('/:username/follow', followUser);
+router.delete('/:username/follow', unfollowUser);
 
 module.exports = router;
+
+// ─── Public user routes (no auth required) ───────────────────────────────────
+const publicRouter = express.Router();
+publicRouter.get('/:username/posts', optionalProtect, getUserPosts);
+publicRouter.get('/:username/followers', optionalProtect, getUserFollowers);
+publicRouter.get('/:username/following', optionalProtect, getUserFollowing);
+publicRouter.get('/:username', optionalProtect, getUserProfile);
+module.exports.publicRouter = publicRouter;

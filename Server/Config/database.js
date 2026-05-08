@@ -13,8 +13,18 @@ const connectDB = async () => {
     }
 
     await mongoose.connect(uri, { dbName: 'Reddit_Clone_Database' });
-
     console.log('MongoDB connected');
+    try {
+      const Conversation = mongoose.model('Conversation');
+      await Conversation.collection.dropIndex('participants_1');
+      console.log('Dropped legacy participants_1 index');
+    } catch {
+      // Index doesn't exist — nothing to do.
+    }
+
+
+    const Conversation = mongoose.model('Conversation');
+    await Conversation.syncIndexes();
   } catch (error) {
     console.error('Reddit_Clone_Database connection error:', error.message);
     process.exit(1);

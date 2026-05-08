@@ -211,6 +211,121 @@ describe('post voting', () => {
   });
 });
 
+describe('post creation', () => {
+  test('creates text, link, and image posts with proper validation', async () => {
+    const owner = await registerUser('postowner');
+    const community = await createCommunity(owner.token);
+
+    // Text post creation
+    let res = await request(app)
+      .post('/reddit/posts')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        community: community.name,
+        type: 'text',
+        title: 'My text post',
+        body: 'Some content here'
+      })
+      .expect(201);
+    expect(res.body.post).toMatchObject({
+      type: 'text',
+      title: 'My text post',
+      body: 'Some content here',
+    });
+    expect(res.body.post.url).toBeFalsy();
+    expect(res.body.post.imageUrl).toBeFalsy();
+
+    // Link post creation
+    res = await request(app)
+      .post('/reddit/posts')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        community: community.name,
+        type: 'link',
+        title: 'Check this out',
+        url: 'https://example.com/article'
+      })
+      .expect(201);
+    expect(res.body.post).toMatchObject({
+      type: 'link',
+      title: 'Check this out',
+      url: 'https://example.com/article',
+    });
+    expect(res.body.post.body).toBeFalsy();
+    expect(res.body.post.imageUrl).toBeFalsy();
+
+    // Image post creation
+    res = await request(app)
+      .post('/reddit/posts')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        community: community.name,
+        type: 'image',
+        title: 'Check out this image',
+        imageUrl: 'https://example.com/image.jpg'
+      })
+      .expect(201);
+    expect(res.body.post).toMatchObject({
+      type: 'image',
+      title: 'Check out this image',
+      imageUrl: 'https://example.com/image.jpg',
+    });
+    expect(res.body.post.body).toBeFalsy();
+    expect(res.body.post.url).toBeFalsy();
+  });
+
+  test('rejects invalid URLs in link and image posts', async () => {
+    const owner = await registerUser('urltestowner');
+    const community = await createCommunity(owner.token);
+
+    // Link post with invalid URL
+    await request(app)
+      .post('/reddit/posts')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        community: community.name,
+        type: 'link',
+        title: 'Invalid link',
+        url: 'not-a-url'
+      })
+      .expect(400);
+
+    // Image post with invalid URL
+    await request(app)
+      .post('/reddit/posts')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        community: community.name,
+        type: 'image',
+        title: 'Invalid image',
+        imageUrl: 'not-a-url'
+      })
+      .expect(400);
+
+    // Link post missing URL
+    await request(app)
+      .post('/reddit/posts')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        community: community.name,
+        type: 'link',
+        title: 'Missing URL'
+      })
+      .expect(400);
+
+    // Image post missing imageUrl
+    await request(app)
+      .post('/reddit/posts')
+      .set('Authorization', `Bearer ${owner.token}`)
+      .send({
+        community: community.name,
+        type: 'image',
+        title: 'Missing image'
+      })
+      .expect(400);
+  });
+});
+
 describe('comments', () => {
   test('creates, lists, replies, edits, deletes, and saves comments', async () => {
     const owner = await registerUser('commentowner');

@@ -22,9 +22,10 @@ const listNotifications = async (req, res) => {
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
-        .populate('actor',   'username')
-        .populate('post',    'title')
-        .populate('comment', 'body'),
+        .populate('actor',     'username')
+        .populate('post',      'title')
+        .populate('comment',   'body')
+        .populate('community', 'name'),
       Notification.countDocuments(filter),
     ]);
 

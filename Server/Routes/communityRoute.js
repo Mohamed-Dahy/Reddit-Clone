@@ -4,12 +4,16 @@ const { protect } = require('../Middlewares/authMiddleware');
 const { optionalProtect } = require('../Middlewares/optionalProtect');
 const {
   createCommunity,
+  listCommunities,
   joinCommunity,
   leaveCommunity,
   getCommunity,
   createFlair,
   updateFlair,
   deleteFlair,
+  sendInvite,
+  respondToInvite,
+  listInvites,
 } = require('../Controllers/communityController');
 
 const router = express.Router();
@@ -52,11 +56,16 @@ const updateFlairValidation = [
 ];
 
 // ─── Routes ──────────────────────────────────────────────────────────────────
-// Get community details by name (optional authentication)
-router.get('/:name',optionalProtect, getCommunity); // tested
-router.post('/',protect, createCommunity); //tested
+router.get('/',        optionalProtect, listCommunities);
+router.get('/:name',   optionalProtect, getCommunity); // tested
+router.post('/',       protect, createCommunity); //tested
 router.post('/:name/join', protect, joinCommunity);//tested
 router.post('/:name/leave', protect, leaveCommunity);//tested
+
+// Invite management (private communities)
+router.get('/:name/invites',              protect, listInvites);
+router.post('/:name/invites',             protect, body('username').trim().notEmpty().withMessage('Username is required'), sendInvite);
+router.post('/:name/invites/respond',     protect, body('action').isIn(['accept', 'reject']).withMessage('action must be accept or reject'), respondToInvite);
 
 // Flair management — moderator-only (enforced in the controller)
 router.post('/:name/flairs',               protect, createFlairValidation, createFlair);//tested

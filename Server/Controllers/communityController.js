@@ -3,6 +3,9 @@ const { validationResult } = require('express-validator');
 const Community = require('../Models/communityModel');
 const Membership = require('../Models/membershipModel');
 const Post = require('../Models/postModel');
+const User = require('../Models/authModel');
+const CommunityInvite = require('../Models/communityInviteModel');
+const Notification = require('../Models/notificationModel');
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -195,6 +198,53 @@ const leaveCommunity = async (req, res) => {
   }
 };
 
+// ─── @route  GET /reddit/communities ─────────────────────────────────────────
+// ─── @access Public (private communities hidden unless member) ───────────────
+const listCommunities = async (req, res) => {
+  const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+  const limit = Math.min(100, Math.max(1, parseInt(req.query.limit, 10) || 50));
+  const skip  = (page - 1) * limit;
+
+  try {
+    const visibility = [{ type: { $in: ['public', 'restricted'] } }];
+    let membershipSet = new Set();
+
+    if (req.user) {
+      const memberships = await Membership.find({ user: req.user.id }).select('community');
+      const memberIds = memberships.map(m => m.community);
+      membershipSet = new Set(memberIds.map(id => String(id)));
+      if (memberIds.length > 0) visibility.push({ _id: { $in: memberIds } });
+    }
+
+    const filter = { $or: visibility };
+
+    const [communities, total] = await Promise.all([
+      Community.find(filter)
+        .select('_id name description type memberCount icon banner isNSFW createdAt')
+        .sort({ memberCount: -1, name: 1 })
+        .skip(skip)
+        .limit(limit),
+      Community.countDocuments(filter),
+    ]);
+
+    const communitiesWithMembership = communities.map(c => ({
+      ...c.toObject(),
+      isMember: membershipSet.has(String(c._id)),
+    }));
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      communities: communitiesWithMembership,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
 // ─── @route  GET /reddit/communities/:name ───────────────────────────────────
 // ─── @access Public (private communities: members only) ──────────────────────
 const getCommunity = async (req, res) => {
@@ -219,7 +269,15 @@ const getCommunity = async (req, res) => {
         return res.status(404).json({ success: false, message: 'Community not found' });
     }
 
-    res.status(200).json({ success: true, community });
+    let isMember = false;
+    let isModerator = false;
+    if (req.user) {
+      const membership = await Membership.findOne({ user: req.user.id, community: community._id });
+      isMember = !!membership;
+      isModerator = membership?.role === 'moderator';
+    }
+
+    res.status(200).json({ success: true, community, isMember, isModerator });
   } catch (err) {
     res.status(500).json({ success: false, message: 'Server error', error: err.message });
   }
@@ -371,12 +429,142 @@ const deleteFlair = async (req, res) => {
   }
 };
 
+// ─── @route  POST /reddit/communities/:name/invites ──────────────────────────
+// ─── @access Private (moderators only) ───────────────────────────────────────
+const sendInvite = async (req, res) => {
+  try {
+    const community = await Community.findOne({ name: req.params.name.toLowerCase() });
+    if (!community)
+      return res.status(404).json({ success: false, message: 'Community not found' });
+
+    if (community.type !== 'private')
+      return res.status(400).json({ success: false, message: 'Invitations are only for private communities' });
+
+    const senderMembership = await Membership.findOne({ user: req.user.id, community: community._id });
+    if (!senderMembership || senderMembership.role !== 'moderator')
+      return res.status(403).json({ success: false, message: 'Only moderators can send invitations' });
+
+    const { username } = req.body;
+    if (!username?.trim())
+      return res.status(400).json({ success: false, message: 'Username is required' });
+
+    const target = await User.findOne({ username: username.trim() }).select('_id username');
+    if (!target)
+      return res.status(404).json({ success: false, message: 'User not found' });
+
+    if (String(target._id) === String(req.user.id))
+      return res.status(400).json({ success: false, message: 'You cannot invite yourself' });
+
+    const alreadyMember = await Membership.findOne({ user: target._id, community: community._id });
+    if (alreadyMember)
+      return res.status(409).json({ success: false, message: 'User is already a member' });
+
+    // Upsert: allows re-inviting someone who previously rejected
+    await CommunityInvite.findOneAndUpdate(
+      { community: community._id, invitedUser: target._id },
+      { invitedBy: req.user.id, status: 'pending' },
+      { upsert: true }
+    );
+
+    // Replace any previous invite notification so the user sees a fresh one
+    try {
+      await Notification.deleteOne({ recipient: target._id, type: 'community_invite', community: community._id });
+      await Notification.create({
+        recipient: target._id,
+        actor: req.user.id,
+        type: 'community_invite',
+        community: community._id,
+      });
+    } catch {
+      // Notification failure must not abort the invite
+    }
+
+    res.status(201).json({ success: true, message: `Invitation sent to u/${target.username}` });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─── @route  POST /reddit/communities/:name/invites/respond ──────────────────
+// ─── @access Private (invited user) ─────────────────────────────────────────
+const respondToInvite = async (req, res) => {
+  try {
+    const { action } = req.body;
+    if (!['accept', 'reject'].includes(action))
+      return res.status(400).json({ success: false, message: 'action must be "accept" or "reject"' });
+
+    const community = await Community.findOne({ name: req.params.name.toLowerCase() });
+    if (!community)
+      return res.status(404).json({ success: false, message: 'Community not found' });
+
+    const invite = await CommunityInvite.findOne({
+      community: community._id,
+      invitedUser: req.user.id,
+      status: 'pending',
+    });
+    if (!invite)
+      return res.status(404).json({ success: false, message: 'No pending invitation found' });
+
+    invite.status = action === 'accept' ? 'accepted' : 'rejected';
+    await invite.save();
+
+    if (action === 'accept') {
+      try {
+        await Membership.create({ user: req.user.id, community: community._id });
+        await Community.findByIdAndUpdate(community._id, { $inc: { memberCount: 1 } });
+      } catch (e) {
+        if (e.code !== 11000) throw e; // 11000 = already a member — treat as success
+      }
+    }
+
+    // Remove the notification now that the user has responded
+    try {
+      await Notification.deleteOne({ recipient: req.user.id, type: 'community_invite', community: community._id });
+    } catch { /* non-critical */ }
+
+    const message = action === 'accept'
+      ? `You joined r/${community.name}`
+      : `You declined the invitation to r/${community.name}`;
+
+    res.status(200).json({ success: true, message });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─── @route  GET /reddit/communities/:name/invites ───────────────────────────
+// ─── @access Private (moderators only) ───────────────────────────────────────
+const listInvites = async (req, res) => {
+  try {
+    const community = await Community.findOne({ name: req.params.name.toLowerCase() });
+    if (!community)
+      return res.status(404).json({ success: false, message: 'Community not found' });
+
+    const membership = await Membership.findOne({ user: req.user.id, community: community._id });
+    if (!membership || membership.role !== 'moderator')
+      return res.status(403).json({ success: false, message: 'Only moderators can view invitations' });
+
+    const invites = await CommunityInvite.find({ community: community._id, status: 'pending' })
+      .populate('invitedUser', 'username')
+      .populate('invitedBy',   'username')
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ success: true, invites });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
 module.exports = {
   createCommunity,
+  listCommunities,
   joinCommunity,
   leaveCommunity,
   getCommunity,
   createFlair,
   updateFlair,
   deleteFlair,
+  sendInvite,
+  respondToInvite,
+  listInvites,
 };

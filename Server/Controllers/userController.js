@@ -1,6 +1,8 @@
 const jwt = require('jsonwebtoken');
 const { validationResult } = require('express-validator');
 const User = require('../Models/authModel');
+const Post = require('../Models/postModel');
+const Follow = require('../Models/followModel');
 
 const generateAccessToken = (userId, role) =>
   jwt.sign({ id: userId, role }, process.env.JWT_SECRET, {
@@ -104,4 +106,184 @@ const changePassword = async (req, res) => {
   }
 };
 
-module.exports = { updateProfile, changePassword };
+// ─── @route  GET /reddit/users/:username/posts ────────────────────────────────
+// ─── @access Public ──────────────────────────────────────────────────────────
+const getUserPosts = async (req, res) => {
+  const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const skip  = (page - 1) * limit;
+
+  try {
+    const user = await User.findOne({ username: req.params.username, isActive: true }).select('_id username');
+    if (!user)
+      return res.status(404).json({ success: false, message: 'User not found' });
+
+    const [posts, total] = await Promise.all([
+      Post.find({ author: user._id, isDeleted: false })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('author', 'username')
+        .populate('community', 'name'),
+      Post.countDocuments({ author: user._id, isDeleted: false }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      posts,
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─── @route  GET /reddit/users/:username ─────────────────────────────────────
+// ─── @access Public (optionalProtect) ────────────────────────────────────────
+const getUserProfile = async (req, res) => {
+  try {
+    const user = await User.findOne({ username: req.params.username, isActive: true })
+      .select('_id username createdAt');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const [followerCount, followingCount, followDoc] = await Promise.all([
+      Follow.countDocuments({ following: user._id }),
+      Follow.countDocuments({ follower: user._id }),
+      req.user ? Follow.findOne({ follower: req.user.id, following: user._id }).select('_id') : null,
+    ]);
+
+    res.status(200).json({
+      success: true,
+      user: {
+        _id: user._id,
+        username: user.username,
+        createdAt: user.createdAt,
+        followerCount,
+        followingCount,
+        isFollowing: !!followDoc,
+      },
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─── @route  POST /reddit/users/:username/follow ─────────────────────────────
+// ─── @access Private ─────────────────────────────────────────────────────────
+const followUser = async (req, res) => {
+  try {
+    const target = await User.findOne({ username: req.params.username, isActive: true }).select('_id');
+    if (!target) return res.status(404).json({ success: false, message: 'User not found' });
+    if (target._id.equals(req.user.id))
+      return res.status(400).json({ success: false, message: 'You cannot follow yourself' });
+
+    try {
+      await Follow.create({ follower: req.user.id, following: target._id });
+      res.status(201).json({ success: true, message: 'User followed' });
+    } catch (err) {
+      if (err.code === 11000)
+        return res.status(200).json({ success: true, message: 'Already following', alreadyFollowing: true });
+      throw err;
+    }
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─── @route  DELETE /reddit/users/:username/follow ───────────────────────────
+// ─── @access Private ─────────────────────────────────────────────────────────
+const unfollowUser = async (req, res) => {
+  try {
+    const target = await User.findOne({ username: req.params.username, isActive: true }).select('_id');
+    if (!target) return res.status(404).json({ success: false, message: 'User not found' });
+    await Follow.deleteOne({ follower: req.user.id, following: target._id });
+    res.status(200).json({ success: true, message: 'User unfollowed' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─── @route  GET /reddit/users/:username/followers ───────────────────────────
+const getUserFollowers = async (req, res) => {
+  const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const skip  = (page - 1) * limit;
+
+  try {
+    const user = await User.findOne({ username: req.params.username, isActive: true }).select('_id');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const [followers, total] = await Promise.all([
+      Follow.find({ following: user._id })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('follower', 'username'),
+      Follow.countDocuments({ following: user._id }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      followers: followers.map(f => ({
+        username: f.follower.username,
+        followedAt: f.createdAt
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+// ─── @route  GET /reddit/users/:username/following ───────────────────────────
+const getUserFollowing = async (req, res) => {
+  const page  = Math.max(1, parseInt(req.query.page,  10) || 1);
+  const limit = Math.min(50, Math.max(1, parseInt(req.query.limit, 10) || 20));
+  const skip  = (page - 1) * limit;
+
+  try {
+    const user = await User.findOne({ username: req.params.username, isActive: true }).select('_id');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const [following, total] = await Promise.all([
+      Follow.find({ follower: user._id })
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate('following', 'username'),
+      Follow.countDocuments({ follower: user._id }),
+    ]);
+
+    res.status(200).json({
+      success: true,
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      following: following.map(f => ({
+        username: f.following.username,
+        followedAt: f.createdAt
+      })),
+    });
+  } catch (err) {
+    res.status(500).json({ success: false, message: 'Server error', error: err.message });
+  }
+};
+
+module.exports = { 
+  updateProfile, 
+  changePassword, 
+  getUserPosts, 
+  getUserProfile, 
+  followUser, 
+  unfollowUser,
+  getUserFollowers,
+  getUserFollowing 
+};
+
